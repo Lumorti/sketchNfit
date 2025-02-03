@@ -1,3 +1,7 @@
+data/*
+*.zip
+*.dat
+
 # Prerequisites
 *.d
 
