@@ -338,17 +338,29 @@ class Paint(object):
         # Otherwise plot the normal data
         else:
 
+            # Renormalize
+            if self.individual.get():
+                for i in range(1, self.fittedData.shape[1]):
+                    minY = np.min(self.fittedData[:,i])
+                    maxY = np.max(self.fittedData[:,i])
+                    self.fittedData[:,i] = (self.fittedData[:,i] - minY) / (maxY - minY)
+            else:
+                minY = np.min(self.fittedData[:,1:])
+                maxY = np.max(self.fittedData[:,1:])
+                self.fittedData[:,1:] = (self.fittedData[:,1:] - minY) / (maxY - minY)
+
             # Plot the fitted points
-            prevX = None
-            prevY = None
-            for i in range(len(self.fittedData)):
-                xLoc = self.offsetX + self.width * (self.fittedData[i][0] - self.minX) / (self.maxX - self.minX)
-                yLoc = self.height * (1.0-self.fittedData[i][1]) + self.offsetY
-                if prevX is not None and prevY is not None:
-                    self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='red')
-                self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='red', width=5, outline='red')
-                prevX = xLoc
-                prevY = yLoc
+            for j in range(1, self.fittedData.shape[1]):
+                prevX = None
+                prevY = None
+                for i in range(len(self.fittedData)):
+                    xLoc = self.offsetX + self.width * (self.fittedData[i,0] - self.minX) / (self.maxX - self.minX)
+                    yLoc = self.height * (1.0-self.fittedData[i,j]) + self.offsetY
+                    if prevX is not None and prevY is not None:
+                        self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='red')
+                    self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='red', width=5, outline='red')
+                    prevX = xLoc
+                    prevY = yLoc
 
     # Fit the data
     def fit(self):
