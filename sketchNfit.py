@@ -17,44 +17,53 @@ class Paint(object):
         self.monomialNames = []
         self.line_width = 3.0
         self.paint_color = 'black'
+        self.monomialFile = None
 
         # Create the file load button
         self.load_button = Button(self.root, text='load from monomials.txt', command=self.load_file)
-        self.load_button.grid(row=0, column=0, padx=10, pady=5)
+        self.load_button.grid(row=0, column=0, padx=10)
 
         # Create the reload button
         self.reload_button = Button(self.root, text='reload', command=self.reload)
-        self.reload_button.grid(row=0, column=1, padx=10, pady=5)
+        self.reload_button.grid(row=1, column=0, padx=10)
 
         # Create the fit button
         self.fit_button = Button(self.root, text='fit', command=self.fit)
-        self.fit_button.grid(row=0, column=2, padx=10, pady=5)
+        self.fit_button.grid(row=0, column=2, padx=10)
 
         # Create the clear button
         self.clear_button = Button(self.root, text='clear', command=self.clear)
-        self.clear_button.grid(row=0, column=3, padx=10, pady=5)
+        self.clear_button.grid(row=0, column=3, padx=10)
 
         # The checkbox to decide if we should use kernel or not
         self.kernel = IntVar()
+        self.kernel.set(1)
         self.kernel_checkbox = Checkbutton(self.root, text="Use kernel", variable=self.kernel)
-        self.kernel_checkbox.grid(row=0, column=4, padx=10, pady=5)
+        self.kernel_checkbox.grid(row=0, column=4, padx=10)
+
+        # Checkbox to decide if we do invidual normalization
+        self.individual = IntVar()
+        self.individual.set(0)
+        self.individual_checkbox = Checkbutton(self.root, text="Individual normalization", variable=self.individual)
+        self.individual_checkbox.grid(row=1, column=4, padx=10)
 
         # Create the random button
         self.random_button = Button(self.root, text='random', command=self.random)
-        self.random_button.grid(row=0, column=5, padx=10, pady=5)
+        self.random_button.grid(row=0, column=5, padx=10)
 
         # Create the many random button
         self.many_random_button = Button(self.root, text='many random', command=self.randomMany)
-        self.many_random_button.grid(row=0, column=6, padx=10, pady=5)
+        self.many_random_button.grid(row=1, column=5, padx=10, pady=10)
 
         # The slider for the monomial limit
         self.monomialLimit = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="max monom")
         self.monomialLimit.set(10)
-        self.monomialLimit.grid(row=0, column=7, padx=10, pady=5)
+        self.monomialLimit.bind("<ButtonRelease-1>", lambda event: self.reload())
+        self.monomialLimit.grid(row=0, column=7, padx=10)
 
         # Create the canvas
         self.c = Canvas(self.root, bg='white', width=1000, height=500)
-        self.c.grid(row=1, columnspan=8)
+        self.c.grid(row=2, columnspan=8)
 
         # Set the title
         self.root.title('Phase Transition Detection')
@@ -95,6 +104,10 @@ class Paint(object):
             self.monomialNames[i] = self.monomialNames[i].replace("y,", "y")
             self.monomialNames[i] = self.monomialNames[i].replace("z,", "z")
         print("Monomial list has shape: ", self.monomialNames.shape)
+
+        # Make sure we have a monomial file
+        if len(self.monomialFile) == 0:
+            return
 
         # Get the file name without the path and set the title
         justFile = self.monomialFile.replace("/monomials.txt", "")
@@ -197,7 +210,8 @@ class Paint(object):
                 A[i,j+1] = self.data[i,j+1]
 
         # Random polynomial in the moments
-        x = 2*np.random.rand(numCoeffs, 1)-1
+        randRange = 2
+        x = randRange * np.random.rand(numCoeffs, 1) - randRange/2.0
 
         # Get the y values
         yVals = A @ x
@@ -217,11 +231,9 @@ class Paint(object):
             # Apply the "kernel" to the data
             self.newData = np.zeros((len(self.fittedData), 2))
             self.newData[:,0] = self.fittedData[:,0]
-            self.kernelRange = 2
-            for i in range(self.kernelRange, len(self.fittedData)-self.kernelRange):
-                self.newData[i,1] = 0
-                for j in range(self.kernelRange):
-                    self.newData[i,1] += np.power(self.fittedData[i-j-1,1] - self.fittedData[i+j+1,1], 4)
+            self.kernelPower = 4
+            for i in range(0, len(self.fittedData)-1):
+                self.newData[i,1] = np.abs(self.fittedData[i,1] - self.fittedData[i+1,1])**self.kernelPower
             self.fittedData = self.newData
 
             # Renormalize
@@ -259,8 +271,84 @@ class Paint(object):
 
     # Plot many random polynomials
     def randomMany(self):
-        for i in range(50):
-            self.random()
+
+        # Same setup as the regression
+        numMonomials = len(self.monomialNames)
+        numCoeffs = 1 + numMonomials
+        A = np.zeros((len(self.data), numCoeffs))
+        b = np.zeros((len(self.data), 1))
+        for i in range(len(self.data)):
+            A[i,0] = 1
+            for j in range(numMonomials):
+                A[i,j+1] = self.data[i,j+1]
+
+        xVals = self.data[:,0]
+        numRandom = 200
+        self.fittedData = np.column_stack((xVals, np.zeros((len(xVals), numRandom))))
+        for i in range(numRandom):
+
+            # Random polynomial in the moments
+            randRange = 2
+            x = randRange * np.random.rand(numCoeffs, 1) - randRange/2.0
+            x = x / np.linalg.norm(x)
+
+            # Get the y values
+            yVals = A @ x
+            self.fittedData[:,i+1] = yVals.flatten()
+
+        # Sort the data by X
+        self.fittedData = self.fittedData[self.fittedData[:,0].argsort()]
+
+        # If told to use kernel
+        if self.kernel.get():
+
+            # Apply the "kernel" to the data
+            self.newData = np.zeros(self.fittedData.shape)
+            self.newData[:,0] = self.fittedData[:,0]
+            self.kernelPower = 2
+            for i in range(self.fittedData.shape[1]-1):
+                self.newData[:,i+1] = np.abs(self.fittedData[:,i+1] - np.roll(self.fittedData[:,i+1], -1))**self.kernelPower
+                self.newData[-1,i+1] = 0
+            self.fittedData = self.newData
+
+            # Renormalize
+            if self.individual.get():
+                for i in range(1, self.fittedData.shape[1]):
+                    minY = np.min(self.fittedData[:,i])
+                    maxY = np.max(self.fittedData[:,i])
+                    self.fittedData[:,i] = (self.fittedData[:,i] - minY) / (maxY - minY)
+            else:
+                minY = np.min(self.fittedData[:,1:])
+                maxY = np.max(self.fittedData[:,1:])
+                self.fittedData[:,1:] = (self.fittedData[:,1:] - minY) / (maxY - minY)
+
+            # Plot again
+            for j in range(1, self.fittedData.shape[1]):
+                prevX = None
+                prevY = None
+                for i in range(len(self.fittedData)):
+                    xLoc = self.offsetX + self.width * (self.fittedData[i,0] - self.minX) / (self.maxX - self.minX)
+                    yLoc = self.height * (1.0-self.fittedData[i,j]) + self.offsetY
+                    if prevX is not None and prevY is not None:
+                        self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='blue')
+                    self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='blue', width=5, outline='blue')
+                    prevX = xLoc
+                    prevY = yLoc
+
+        # Otherwise plot the normal data
+        else:
+
+            # Plot the fitted points
+            prevX = None
+            prevY = None
+            for i in range(len(self.fittedData)):
+                xLoc = self.offsetX + self.width * (self.fittedData[i][0] - self.minX) / (self.maxX - self.minX)
+                yLoc = self.height * (1.0-self.fittedData[i][1]) + self.offsetY
+                if prevX is not None and prevY is not None:
+                    self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='red')
+                self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='red', width=5, outline='red')
+                prevX = xLoc
+                prevY = yLoc
 
     # Fit the data
     def fit(self):
