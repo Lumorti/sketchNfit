@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from tkinter import *
 import numpy as np
 from tkinter import filedialog
@@ -35,6 +37,10 @@ class Paint(object):
         self.clear_button = Button(self.root, text='clear', command=self.clear)
         self.clear_button.grid(row=0, column=3, padx=10)
 
+        # Create the find peaks button
+        self.clear_button = Button(self.root, text='find peaks', command=self.findPeaks)
+        self.clear_button.grid(row=1, column=3, padx=10)
+
         # The checkbox to decide if we should use kernel or not
         self.kernel = IntVar()
         self.kernel.set(1)
@@ -56,14 +62,34 @@ class Paint(object):
         self.many_random_button.grid(row=1, column=5, padx=10, pady=10)
 
         # The slider for the monomial limit
-        self.monomialLimit = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="max monom")
-        self.monomialLimit.set(10)
-        self.monomialLimit.bind("<ButtonRelease-1>", lambda event: self.reload())
-        self.monomialLimit.grid(row=0, column=7, padx=10)
+        # self.monomialLimit = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="max monom")
+        # self.monomialLimit.set(10)
+        # self.monomialLimit.bind("<ButtonRelease-1>", lambda event: self.reload())
+        # self.monomialLimit.grid(row=1, column=7, padx=10)
+
+        # The slider for the lower monomial limit
+        # self.monomialLimitLower = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="min monom")
+        # self.monomialLimitLower.set(1)
+        # self.monomialLimitLower.bind("<ButtonRelease-1>", lambda event: self.reload())
+        # self.monomialLimitLower.grid(row=0, column=7, padx=10)
+
+        # Checkboxes for monomial inclusion
+        self.monomialCheckboxes = []
+        perRow = 3
+        for i in range(6):
+            row = 0
+            if i >= perRow:
+                row = 1
+            col = 6 + (i % perRow)
+            self.monomialCheckboxes.append(IntVar())
+            self.monomialCheckboxes[i].set(1)
+            self.monomialCheckbox = Checkbutton(self.root, text=str(i+1), variable=self.monomialCheckboxes[i])
+            self.monomialCheckbox.grid(row=row, column=col, padx=10)
+            self.monomialCheckbox.bind("<ButtonRelease-1>", lambda event: self.reload())
 
         # Create the canvas
         self.c = Canvas(self.root, bg='white', width=1000, height=500)
-        self.c.grid(row=2, columnspan=8)
+        self.c.grid(row=2, columnspan=9)
 
         # Set the title
         self.root.title('Phase Transition Detection')
@@ -128,29 +154,51 @@ class Paint(object):
                         numInFilename += char
                 numInFilename = float(numInFilename)
                 newData = np.insert(newData, 0, numInFilename)
-                print("Data from file: ", filename, " has shape: ", newData.shape)
                 self.data.append(newData)
         self.data = np.array(self.data)
         print("Overall data has shape: ", self.data.shape)
 
-        for i in range(10):
-            print(self.monomialNames[i], len(self.monomialNames[i]))
-
         # Only keep monomials with a limited size
         removed = 0
-        limit = self.monomialLimit.get() * 16
+        allowedLengths = []
+        for i in range(len(self.monomialCheckboxes)):
+            if self.monomialCheckboxes[i].get():
+                allowedLengths.append((i+1) * 16)
         toKeep = [True for i in range(len(self.monomialNames))]
         for i in range(len(self.monomialNames)):
-            if len(self.monomialNames[i]) > limit:
+            if len(self.monomialNames[i]) not in allowedLengths:
                 toKeep[i] = False
                 removed += 1
         self.monomialNames = self.monomialNames[toKeep]
         toKeep.insert(0, True)
         self.data = self.data[:,toKeep]
-        print("Removed ", removed, " monomials with size > ", limit)
+        print("Removed ", removed, " monomials")
 
         # Initial fit
         self.fit()
+
+    # Find the peaks of the data
+    def findPeaks(self):
+
+        # Pick a threshold
+        thresh = 0.3
+
+        # Go through fitted data
+        peaks = set()
+        for i in range(len(self.fittedData)):
+            xVal = self.fittedData[i][0]
+            for j in range(len(self.fittedData[i])-1):
+                if self.fittedData[i][j+1] > thresh:
+                    peaks.add(xVal)
+                    break
+
+        # Sort the set
+        peaks = list(peaks)
+        peaks.sort()
+
+        # Summarize the peaks
+        for peak in peaks:
+            print("Peak at ", peak)
 
     # Paint the line
     def paint(self, event):
@@ -196,81 +244,8 @@ class Paint(object):
             xVal = self.minX + (self.maxX - self.minX) * i / numLabels
             self.c.create_text(xLoc, self.offsetY + self.height + 10, text=str(round(xVal, 2)), anchor=E)
 
-    # Plot a random polynomial of the data
-    def random(self):
-
-        # Same setup as the regression
-        numMonomials = len(self.monomialNames)
-        numCoeffs = 1 + numMonomials
-        A = np.zeros((len(self.data), numCoeffs))
-        b = np.zeros((len(self.data), 1))
-        for i in range(len(self.data)):
-            A[i,0] = 1
-            for j in range(numMonomials):
-                A[i,j+1] = self.data[i,j+1]
-
-        # Random polynomial in the moments
-        randRange = 2
-        x = randRange * np.random.rand(numCoeffs, 1) - randRange/2.0
-
-        # Get the y values
-        yVals = A @ x
-        minY = np.min(yVals)
-        maxY = np.max(yVals)
-        yVals = (yVals - minY) / (maxY - minY)
-        self.fittedData = []
-        xVals = self.data[:,0]
-        self.fittedData = np.column_stack((xVals, yVals))
-
-        # Sort the data by X
-        self.fittedData = self.fittedData[self.fittedData[:,0].argsort()]
-
-        # If told to use kernel
-        if self.kernel.get():
-
-            # Apply the "kernel" to the data
-            self.newData = np.zeros((len(self.fittedData), 2))
-            self.newData[:,0] = self.fittedData[:,0]
-            self.kernelPower = 4
-            for i in range(0, len(self.fittedData)-1):
-                self.newData[i,1] = np.abs(self.fittedData[i,1] - self.fittedData[i+1,1])**self.kernelPower
-            self.fittedData = self.newData
-
-            # Renormalize
-            minY = np.min(self.fittedData[:,1])
-            maxY = np.max(self.fittedData[:,1])
-            for i in range(len(self.fittedData)):
-                self.fittedData[i][1] = (self.fittedData[i][1] - minY) / (maxY - minY)
-
-            # Plot again
-            prevX = None
-            prevY = None
-            for i in range(len(self.fittedData)):
-                xLoc = self.offsetX + self.width * (self.fittedData[i][0] - self.minX) / (self.maxX - self.minX)
-                yLoc = self.height * (1.0-self.fittedData[i][1]) + self.offsetY
-                if prevX is not None and prevY is not None:
-                    self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='blue')
-                self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='blue', width=5, outline='blue')
-                prevX = xLoc
-                prevY = yLoc
-
-        # Otherwise plot the normal data
-        else:
-
-            # Plot the fitted points
-            prevX = None
-            prevY = None
-            for i in range(len(self.fittedData)):
-                xLoc = self.offsetX + self.width * (self.fittedData[i][0] - self.minX) / (self.maxX - self.minX)
-                yLoc = self.height * (1.0-self.fittedData[i][1]) + self.offsetY
-                if prevX is not None and prevY is not None:
-                    self.c.create_line(xLoc, yLoc, prevX, prevY, width=2, fill='red')
-                self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='red', width=5, outline='red')
-                prevX = xLoc
-                prevY = yLoc
-
     # Plot many random polynomials
-    def randomMany(self):
+    def randomMany(self, num=None):
 
         # Same setup as the regression
         numMonomials = len(self.monomialNames)
@@ -281,9 +256,14 @@ class Paint(object):
             A[i,0] = 1
             for j in range(numMonomials):
                 A[i,j+1] = self.data[i,j+1]
-
         xVals = self.data[:,0]
-        numRandom = 200
+
+        # How many random polynomials to plot
+        if num is not None:
+            numRandom = num
+        else:
+            numRandom = 1000
+
         self.fittedData = np.column_stack((xVals, np.zeros((len(xVals), numRandom))))
         for i in range(numRandom):
 
@@ -361,6 +341,10 @@ class Paint(object):
                     self.c.create_oval(xLoc, yLoc, xLoc, yLoc, fill='red', width=5, outline='red')
                     prevX = xLoc
                     prevY = yLoc
+
+    # Plot a random polynomial of the data
+    def random(self):
+        self.randomMany(1)
 
     # Fit the data
     def fit(self):
