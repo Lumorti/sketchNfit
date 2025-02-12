@@ -33,6 +33,10 @@ class Paint(object):
         self.fit_button = Button(self.root, text='fit', command=self.fit)
         self.fit_button.grid(row=0, column=2, padx=10)
 
+        # Create the dataset button
+        self.fit_button = Button(self.root, text='dataset', command=self.dataset)
+        self.fit_button.grid(row=1, column=2, padx=10)
+
         # Create the clear button
         self.clear_button = Button(self.root, text='clear', command=self.clear)
         self.clear_button.grid(row=0, column=3, padx=10)
@@ -61,18 +65,6 @@ class Paint(object):
         self.many_random_button = Button(self.root, text='many random', command=self.randomMany)
         self.many_random_button.grid(row=1, column=5, padx=10, pady=10)
 
-        # The slider for the monomial limit
-        # self.monomialLimit = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="max monom")
-        # self.monomialLimit.set(10)
-        # self.monomialLimit.bind("<ButtonRelease-1>", lambda event: self.reload())
-        # self.monomialLimit.grid(row=1, column=7, padx=10)
-
-        # The slider for the lower monomial limit
-        # self.monomialLimitLower = Scale(self.root, from_=1, to=10, orient=HORIZONTAL, label="min monom")
-        # self.monomialLimitLower.set(1)
-        # self.monomialLimitLower.bind("<ButtonRelease-1>", lambda event: self.reload())
-        # self.monomialLimitLower.grid(row=0, column=7, padx=10)
-
         # Checkboxes for monomial inclusion
         self.monomialCheckboxes = []
         perRow = 3
@@ -100,6 +92,48 @@ class Paint(object):
         self.c.bind('<B1-Motion>', self.paint)
         self.c.bind('<ButtonRelease-1>', self.reset)
         self.root.mainloop()
+
+    # Generate the full dataset
+    def dataset(self):
+        if self.monomialFile is None:
+            return
+
+        # Go back one directory
+        lastSlash = self.monomialFile.rfind("/")
+        path = self.monomialFile[:lastSlash]
+        lastSlash = path.rfind("/")
+        path = path[:lastSlash+1]
+
+        # Find all folders
+        folders = []
+        print("Looking for folders in: ", path)
+        for filename in os.listdir(path):
+            if os.path.isdir(path + filename):
+                if "nolayer" not in filename:
+                    folders.append(filename)
+
+        # For each folder, load the dataset
+        fullData = []
+        for folder in folders:
+            print("Loading folder: ", folder)
+            fullPath = path + folder + "/monomials.txt"
+            self.load_file(fullPath)
+            self.randomMany()
+            J = float(fullPath[fullPath.find("J_x")+3:fullPath.find("DIR")])
+            print("J: ", J)
+            JCol = np.full((len(self.fittedData), 1), J)
+            xyData = np.column_stack((JCol, self.fittedData[:,0], np.max(self.fittedData[:,1:], axis=1)))
+            print(xyData.shape)
+            fullData.extend(xyData)
+        fullData = np.array(fullData)
+
+        # Save the full data
+        print("Full data has shape: ", fullData.shape)
+        monomOrders = ""
+        for i in range(len(self.monomialCheckboxes)):
+            if self.monomialCheckboxes[i].get():
+                monomOrders +=  "_" + str(i+1)
+        np.savetxt("fullData" + monomOrders + ".txt", fullData)
 
     # Clear the canvas
     def clear(self):
@@ -258,6 +292,20 @@ class Paint(object):
                 A[i,j+1] = self.data[i,j+1]
         xVals = self.data[:,0]
 
+        # Same as above but second order
+        # numMonomials = len(self.monomialNames)
+        # numCoeffs = 1 + numMonomials + numMonomials * (numMonomials + 1) // 2
+        # A = np.zeros((len(self.data), numCoeffs))
+        # b = np.zeros((len(self.data), 1))
+        # for i in range(len(self.data)):
+            # A[i,0] = 1
+            # for j in range(numMonomials):
+                # A[i,j+1] = self.data[i,j+1]
+            # for j in range(numMonomials):
+                # for k in range(j, numMonomials):
+                    # A[i,numMonomials+1+j*(j+1)//2+k] = self.data[i,j+1] * self.data[i,k+1]
+        # xVals = self.data[:,0]
+
         # How many random polynomials to plot
         if num is not None:
             numRandom = num
@@ -296,10 +344,14 @@ class Paint(object):
                 for i in range(1, self.fittedData.shape[1]):
                     minY = np.min(self.fittedData[:,i])
                     maxY = np.max(self.fittedData[:,i])
+                    if minY == maxY:
+                        return
                     self.fittedData[:,i] = (self.fittedData[:,i] - minY) / (maxY - minY)
             else:
                 minY = np.min(self.fittedData[:,1:])
                 maxY = np.max(self.fittedData[:,1:])
+                if minY == maxY:
+                    return
                 self.fittedData[:,1:] = (self.fittedData[:,1:] - minY) / (maxY - minY)
 
             # Plot again
@@ -323,10 +375,14 @@ class Paint(object):
                 for i in range(1, self.fittedData.shape[1]):
                     minY = np.min(self.fittedData[:,i])
                     maxY = np.max(self.fittedData[:,i])
+                    if minY == maxY:
+                        return
                     self.fittedData[:,i] = (self.fittedData[:,i] - minY) / (maxY - minY)
             else:
                 minY = np.min(self.fittedData[:,1:])
                 maxY = np.max(self.fittedData[:,1:])
+                if minY == maxY:
+                    return
                 self.fittedData[:,1:] = (self.fittedData[:,1:] - minY) / (maxY - minY)
 
             # Plot the fitted points
@@ -433,7 +489,6 @@ class Paint(object):
         # At this point everything is normalized
         self.minY = 0
         self.maxY = 1
-
         print("Drawing samples: ", self.drawingSamples.shape)
         print("Fitted data: ", self.fittedData.shape)
 
