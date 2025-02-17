@@ -104,12 +104,14 @@ class Paint(object):
         lastSlash = path.rfind("/")
         path = path[:lastSlash+1]
 
+
         # Find all folders
+        noLayer = ("nolayer" in self.monomialFile)
         folders = []
         print("Looking for folders in: ", path)
         for filename in os.listdir(path):
             if os.path.isdir(path + filename):
-                if "nolayer" not in filename:
+                if noLayer == ("nolayer" in filename):
                     folders.append(filename)
 
         # For each folder, load the dataset
@@ -182,10 +184,7 @@ class Paint(object):
         for filename in os.listdir(path):
             if filename.endswith(".npy"):
                 newData = np.load(path + filename)
-                numInFilename = ""
-                for char in filename.replace(".npy", ""):
-                    if char.isdigit() or char == ".":
-                        numInFilename += char
+                numInFilename = filename[filename.find("Jper")+4:filename.find(".npy")]
                 numInFilename = float(numInFilename)
                 newData = np.insert(newData, 0, numInFilename)
                 self.data.append(newData)
